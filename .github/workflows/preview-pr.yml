@@ -1,0 +1,84 @@
+name: Cloudflare Pages Preview Deployments
+
+# กำหนดให้ Workflow ทำงานเมื่อเกิดเหตุการณ์ Pull Request ที่ระบุ
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+# กำหนดสิทธิ์ที่จำเป็นสำหรับ GitHub Actions
+permissions:
+  contents: read
+  pull-requests: write # สำหรับโพสต์คอมเมนต์ URL
+  deployments: write # สำหรับการจัดการ GitHub Deployment Status
+
+env:
+  # 💡 ปรับเปลี่ยนค่าเหล่านี้ให้เป็นของคุณ
+  PROJECT_NAME: your-cloudflare-pages-project-name # ชื่อ Project ใน Cloudflare Pages
+  BUILD_OUTPUT_DIR: dist # โฟลเดอร์ผลลัพธ์หลังจากการ Build (เช่น public, build, dist)
+  BUILD_COMMAND: npm run build # คำสั่ง Build ของ Project คุณ
+
+jobs:
+  # --------------------------------------------------------------------------
+  # A. Job สำหรับการสร้าง/อัปเดต Deployment (ข้อ 1, 2, 3, 5, 6)
+  # --------------------------------------------------------------------------
+  deploy_preview:
+    name: 🚀 Deploy Preview
+    runs-on: ubuntu-latest
+    
+    # 💡 เงื่อนไขการทำงาน: ทำงานเมื่อ PR ถูก Opened, Synchronize, หรือ Reopened
+    # และตรวจสอบว่าเป็น PR จาก Repository เดียวกันเพื่อความปลอดภัย
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened')
+
+    steps:
+      - name: ⬇️ Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup Node.js (ถ้าใช้)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' 
+          cache: 'npm' 
+
+      - name: 📦 Install Dependencies & Build
+        run: |
+          npm ci 
+          ${{ env.BUILD_COMMAND }} 
+
+      - name: 🚀 Publish to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: ${{ env.PROJECT_NAME }}
+          directory: ${{ env.BUILD_OUTPUT_DIR }}
+          branch: ${{ github.head_ref }} # ใช้ชื่อ branch ของ PR สำหรับ Preview Deployment
+        
+        # Action นี้จะจัดการ:
+        # 1. สร้าง Project ใหม่ถ้าไม่มี (ข้อ 1)
+        # 2. สร้าง Deployment ใหม่เมื่อเปิด PR (opened) (ข้อ 2)
+        # 3. ทำการ Redeploy/Build ใหม่เมื่อมีการ Push commit (synchronize) (ข้อ 3)
+        # 4. ทำการ Deploy ใหม่เมื่อ PR ถูก Reopened (reopened) โดยใช้ Build Cache ของ CF (ข้อ 5)
+        # 5. โพสต์ URL ของ Deployment กลับไปใน PR โดยอัตโนมัติ (ข้อ 6)
+
+  # --------------------------------------------------------------------------
+  # B. Job สำหรับการทำลาย Deployment (Cleanup) (ข้อ 4)
+  # --------------------------------------------------------------------------
+  cleanup_deployment:
+    name: 🧹 Cleanup Preview Deployment
+    runs-on: ubuntu-latest
+    
+    # 💡 เงื่อนไขการทำงาน: ทำงานเมื่อ Action เป็น 'closed' เท่านั้น (เมื่อ PR ถูกปิดหรือ Merge)
+    if: github.event.action == 'closed'
+
+    steps:
+      - name: 🧹 Delete Cloudflare Preview Deployments
+        # ใช้ Action เสริมที่ออกแบบมาเพื่อลบ Deployments โดยเฉพาะ
+        uses: go-fjords/cloudflare-delete-deployments-action@v1
+        with:
+          token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          account: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          project: ${{ env.PROJECT_NAME }}
+          branch: ${{ github.head_ref }} # ระบุ branch ของ PR เพื่อลบ Deployment ที่เกี่ยวข้อง
+        # คำสั่งนี้จะทำการลบ Deployment เพื่อประหยัด Resource (ข้อ 4)
