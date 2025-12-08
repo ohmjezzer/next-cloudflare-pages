@@ -54,6 +54,10 @@ jobs:
           projectName: ${{ env.PROJECT_NAME }}
           directory: ${{ env.BUILD_OUTPUT_DIR }}
           branch: ${{ github.head_ref }} # ใช้ชื่อ branch ของ PR สำหรับ Preview Deployment
+
+      - name: Output of job summary
+        run: |
+          echo ${GITHUB_STEP_SUMMARY}
         
         # Action นี้จะจัดการ:
         # 1. สร้าง Project ใหม่ถ้าไม่มี (ข้อ 1)
