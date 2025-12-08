@@ -13,8 +13,8 @@ permissions:
 
 env:
   # 💡 ปรับเปลี่ยนค่าเหล่านี้ให้เป็นของคุณ
-  PROJECT_NAME: your-cloudflare-pages-project-name # ชื่อ Project ใน Cloudflare Pages
-  BUILD_OUTPUT_DIR: dist # โฟลเดอร์ผลลัพธ์หลังจากการ Build (เช่น public, build, dist)
+  PROJECT_NAME: next-cloudflare-pages # ชื่อ Project ใน Cloudflare Pages
+  BUILD_OUTPUT_DIR: out # โฟลเดอร์ผลลัพธ์หลังจากการ Build (เช่น public, build, dist)
   BUILD_COMMAND: npm run build # คำสั่ง Build ของ Project คุณ
 
 jobs:
