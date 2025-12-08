@@ -75,7 +75,7 @@ jobs:
     steps:
       - name: 🧹 Delete Cloudflare Preview Deployments
         # ใช้ Action เสริมที่ออกแบบมาเพื่อลบ Deployments โดยเฉพาะ
-        uses: go-fjords/cloudflare-delete-deployments-action@v1
+        uses: go-fjords/cloudflare-delete-deployments-action@main
         with:
           token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           account: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
