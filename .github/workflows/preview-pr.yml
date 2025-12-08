@@ -47,7 +47,7 @@ jobs:
           ${{ env.BUILD_COMMAND }} 
 
       - name: 🚀 Publish to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/pages-action@main
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
