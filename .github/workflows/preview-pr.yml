@@ -49,7 +49,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # คำสั่ง Wrangler Pages Deploy
-          command: pages deploy ${{ env.DIST_FOLDER }} --project-name=${{ env.PROJECT_NAME }}
+          command: pages deploy ${{ env.DIST_FOLDER }} --project-name=${{ env.PROJECT_NAME }} --branch=${{ github.head_ref }}
           # Wrangler จะดึงข้อมูล branch และ commit จาก GitHub context มาใช้ในการสร้าง Preview deployment ให้อัตโนมัติ
 
       # 3. Comment Preview URL ใน Pull Request (ข้อ 6)
@@ -79,16 +79,9 @@ jobs:
     if: github.event.action == 'closed'
 
     steps:
-      - name: 🧹 Delete Cloudflare Preview Deployment
-        uses: cloudflare/wrangler-action@v3
+      - uses: go-fjords/cloudflare-delete-deployments-action@main
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # คำสั่ง Wrangler สำหรับลบ Deployment ของ Branch นั้นๆ
-          # เราต้องใช้คำสั่ง pages deployment delete โดยใช้ commit hash
-          # เนื่องจาก Wrangler ไม่มีคำสั่ง Pages deployment delete by branch โดยตรง
-          # การลบต้องใช้ API โดยตรง แต่เราจะใช้ pages project delete-branch แทนเพื่อความง่าย
-          
-          # หมายเหตุ: 'wrangler pages project delete-branch' จะลบ branch deployment ทั้งหมด
-          # คำสั่งนี้เป็นวิธีที่ง่ายที่สุดในการ cleanup โดยใช้ Wrangler
-          command: pages project delete-branch ${{ github.head_ref }} --project-name=${{ env.PROJECT_NAME }}
+          token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          project: ${{ env.PROJECT_NAME }}
+          account: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          branch: ${{ github.head_ref }}
