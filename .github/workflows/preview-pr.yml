@@ -1,32 +1,30 @@
-name: Cloudflare Pages Preview Deployments
+name: Cloudflare Pages Preview Deploy (Wrangler Action)
 
-# กำหนดให้ Workflow ทำงานเมื่อเกิดเหตุการณ์ Pull Request ที่ระบุ
+# กำหนดให้ Workflow ทำงานเมื่อเกิดเหตุการณ์ Pull Request
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
-# กำหนดสิทธิ์ที่จำเป็นสำหรับ GitHub Actions
+# กำหนดสิทธิ์ที่จำเป็น (สำคัญสำหรับการ comment และ deployment status)
 permissions:
   contents: read
-  pull-requests: write # สำหรับโพสต์คอมเมนต์ URL
-  deployments: write # สำหรับการจัดการ GitHub Deployment Status
+  pull-requests: write 
+  deployments: write
 
 env:
   # 💡 ปรับเปลี่ยนค่าเหล่านี้ให้เป็นของคุณ
-  PROJECT_NAME: your-cloudflare-pages-project-name # ชื่อ Project ใน Cloudflare Pages
-  BUILD_OUTPUT_DIR: dist # โฟลเดอร์ผลลัพธ์หลังจากการ Build (เช่น public, build, dist)
-  BUILD_COMMAND: npm run build # คำสั่ง Build ของ Project คุณ
+  PROJECT_NAME: next-cloudflare-pages # ชื่อ Project ใน Cloudflare Pages
+  DIST_FOLDER: out # โฟลเดอร์ผลลัพธ์หลังจากการ Build
 
 jobs:
   # --------------------------------------------------------------------------
   # A. Job สำหรับการสร้าง/อัปเดต Deployment (ข้อ 1, 2, 3, 5, 6)
   # --------------------------------------------------------------------------
   deploy_preview:
-    name: 🚀 Deploy Preview
+    name: 🚀 Deploy Preview (Wrangler)
     runs-on: ubuntu-latest
     
     # 💡 เงื่อนไขการทำงาน: ทำงานเมื่อ PR ถูก Opened, Synchronize, หรือ Reopened
-    # และตรวจสอบว่าเป็น PR จาก Repository เดียวกันเพื่อความปลอดภัย
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
       (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened')
@@ -35,33 +33,41 @@ jobs:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🛠️ Setup Node.js (ถ้าใช้)
+      # 1. ติดตั้ง Dependencies และ Build (ถ้ามี)
+      - name: 🛠️ Setup Node.js & Build (Optional)
         uses: actions/setup-node@v4
         with:
           node-version: '20' 
-          cache: 'npm' 
+      - run: npm install # หรือคำสั่ง build อื่นๆ
+      - run: npm run build # หรือคำสั่ง build อื่นๆ
 
-      - name: 📦 Install Dependencies & Build
-        run: |
-          npm ci 
-          ${{ env.BUILD_COMMAND }} 
-
+      # 2. Deploy Cloudflare Pages โดยใช้คำสั่ง Wrangler (ข้อ 1, 2, 3, 5)
       - name: 🚀 Publish to Cloudflare Pages
-        uses: cloudflare/pages-action@main
+        id: deploy # 👈 กำหนด ID เพื่อจับ Output
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: ${{ env.PROJECT_NAME }}
-          directory: ${{ env.BUILD_OUTPUT_DIR }}
-          branch: ${{ github.head_ref }} # ใช้ชื่อ branch ของ PR สำหรับ Preview Deployment
-        
-        # Action นี้จะจัดการ:
-        # 1. สร้าง Project ใหม่ถ้าไม่มี (ข้อ 1)
-        # 2. สร้าง Deployment ใหม่เมื่อเปิด PR (opened) (ข้อ 2)
-        # 3. ทำการ Redeploy/Build ใหม่เมื่อมีการ Push commit (synchronize) (ข้อ 3)
-        # 4. ทำการ Deploy ใหม่เมื่อ PR ถูก Reopened (reopened) โดยใช้ Build Cache ของ CF (ข้อ 5)
-        # 5. โพสต์ URL ของ Deployment กลับไปใน PR โดยอัตโนมัติ (ข้อ 6)
+          # คำสั่ง Wrangler Pages Deploy
+          command: pages deploy ${{ env.DIST_FOLDER }} --project-name=${{ env.PROJECT_NAME }}
+          # Wrangler จะดึงข้อมูล branch และ commit จาก GitHub context มาใช้ในการสร้าง Preview deployment ให้อัตโนมัติ
 
+      # 3. Comment Preview URL ใน Pull Request (ข้อ 6)
+      - name: 💬 Comment Preview URL on Pull Request
+        uses: peter-evans/create-or-update-comment@v3 
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          # ใช้ output variable 'pages-deployment-alias-url' สำหรับ URL ของ Preview branch
+          body: |
+            🎉 **Cloudflare Pages Preview Deployment**
+            
+            Deployment Status: **Succeeded**
+            
+            🔗 **Preview URL:** ${{ steps.deploy.outputs.pages-deployment-alias-url }} 
+            
+            _Deployment will be destroyed when the Pull Request is closed or merged._
+          update-key: pr-preview-deployment-url
+          
   # --------------------------------------------------------------------------
   # B. Job สำหรับการทำลาย Deployment (Cleanup) (ข้อ 4)
   # --------------------------------------------------------------------------
@@ -69,16 +75,20 @@ jobs:
     name: 🧹 Cleanup Preview Deployment
     runs-on: ubuntu-latest
     
-    # 💡 เงื่อนไขการทำงาน: ทำงานเมื่อ Action เป็น 'closed' เท่านั้น (เมื่อ PR ถูกปิดหรือ Merge)
+    # 💡 เงื่อนไขการทำงาน: ทำงานเมื่อ PR ถูกปิด (closed) หรือถูก Merge
     if: github.event.action == 'closed'
 
     steps:
-      - name: 🧹 Delete Cloudflare Preview Deployments
-        # ใช้ Action เสริมที่ออกแบบมาเพื่อลบ Deployments โดยเฉพาะ
-        uses: go-fjords/cloudflare-delete-deployments-action@v1
+      - name: 🧹 Delete Cloudflare Preview Deployment
+        uses: cloudflare/wrangler-action@v3
         with:
-          token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          account: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          project: ${{ env.PROJECT_NAME }}
-          branch: ${{ github.head_ref }} # ระบุ branch ของ PR เพื่อลบ Deployment ที่เกี่ยวข้อง
-        # คำสั่งนี้จะทำการลบ Deployment เพื่อประหยัด Resource (ข้อ 4)
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # คำสั่ง Wrangler สำหรับลบ Deployment ของ Branch นั้นๆ
+          # เราต้องใช้คำสั่ง pages deployment delete โดยใช้ commit hash
+          # เนื่องจาก Wrangler ไม่มีคำสั่ง Pages deployment delete by branch โดยตรง
+          # การลบต้องใช้ API โดยตรง แต่เราจะใช้ pages project delete-branch แทนเพื่อความง่าย
+          
+          # หมายเหตุ: 'wrangler pages project delete-branch' จะลบ branch deployment ทั้งหมด
+          # คำสั่งนี้เป็นวิธีที่ง่ายที่สุดในการ cleanup โดยใช้ Wrangler
+          command: pages project delete-branch ${{ github.head_ref }} --project-name=${{ env.PROJECT_NAME }}
